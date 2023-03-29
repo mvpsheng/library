@@ -8,56 +8,28 @@ const { body, validationResult } = require("express-validator");
 var async = require("async");
 
 exports.index = function (req, res) {
-  async.parallel(
-    {
-      book_count: function (callback) {
-        Book.countDocuments().then(()=>{
-            
-        }).catch((err)=>{
-            callback;
-        });
-      },
-      book_instance_count: function (callback) {
-        // BookInstance.countDocuments({}, callback);
-        BookInstance.countDocuments.then(()=>{
-           
-        }).catch((err)=>{
-             callback;
-        });
-      },
-      book_instance_available_count: function (callback) {
-        // BookInstance.countDocuments({ status: "Available" }, callback);
-        BookInstance.countDocuments().then(()=>{
-            { status: "Available" }
-        }).catch((err)=>{
-            callback;
-        });
-      },
-      author_count: function (callback) {
-        // Author.countDocuments({}, callback);
-        Author.countDocuments().then(()=>{
-           
-        }).catch((err)=>{
-             callback;
-        });
-      },
-      genre_count: function (callback) {
-        // Genre.countDocuments({}, callback);
-        Genre.countDocuments.then(()=>{
-           
-        }).catch((err)=>{
-             callback;
-        });
-      },
-    },
-    function (err, results) {
+  Promise.all([
+    Book.countDocuments({}),
+    BookInstance.countDocuments({}),
+    BookInstance.countDocuments({ status: "Available" }),
+    Author.countDocuments({}),
+    Genre.countDocuments({})
+  ])
+    .then(([book_count, book_instance_count, book_instance_available_count, author_count, genre_count]) => {
       res.render("index", {
         title: "Local Library Home",
-        error: err,
-        data: results,
+        data: {
+          book_count,
+          book_instance_count,
+          book_instance_available_count,
+          author_count,
+          genre_count
+        }
       });
-    }
-  );
+    })
+    .catch((err) => {
+      console.error(err);
+    });
 };
 
 // Display list of all books.
@@ -65,48 +37,38 @@ exports.book_list = function (req, res, next) {
   Book.find({}, "title author")
     .sort({ title: 1 })
     .populate("author")
-    .exec(function (err, list_books) {
-      if (err) {
-        return next(err);
-      } else {
-        // Successful, so render
-        res.render("book_list", { title: "Book List", book_list: list_books });
-      }
+    .then((list_books) => {
+      res.render("book_list", { title: "Book List", book_list: list_books });
     });
 };
 
 // Display detail page for a specific book.
-exports.book_detail = function (req, res, next) {
-  async.parallel(
-    {
-      book: function (callback) {
-        Book.findById(req.params.id)
-          .populate("author")
-          .populate("genre")
-          .exec(callback);
-      },
-      book_instance: function (callback) {
-        BookInstance.find({ book: req.params.id }).exec(callback);
-      },
-    },
-    function (err, results) {
-      if (err) {
-        return next(err);
-      }
-      if (results.book == null) {
-        // No results.
-        var err = new Error("Book not found");
-        err.status = 404;
-        return next(err);
-      }
-      // Successful, so render.
-      res.render("book_detail", {
-        title: results.book.title,
-        book: results.book,
-        book_instances: results.book_instance,
-      });
+exports.book_detail = async function (req, res, next) {
+  try {
+    const [book, book_instances] = await Promise.all([
+      Book.findById(req.params.id)
+        .populate("author")
+        .populate("genre")
+        .exec(),
+      BookInstance.find({ book: req.params.id }).exec(),
+    ]);
+
+    if (book == null) {
+      // No results.
+      var err = new Error("Book not found");
+      err.status = 404;
+      return next(err);
     }
-  );
+
+    // Successful, so render.
+    res.render("book_detail", {
+      title: book.title,
+      book: book,
+      book_instances: book_instances,
+    });
+  } catch (err) {
+    return next(err);
+  }
 };
 
 // Display book create form on GET.

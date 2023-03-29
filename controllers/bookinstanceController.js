@@ -8,48 +8,35 @@ const { body, validationResult } = require("express-validator");
 exports.bookinstance_list = function (req, res, next) {
   BookInstance.find()
     .populate("book")
-    .exec(function (err, list_bookinstances) {
-      if (err) {
-        return next(err);
-      }
-      // Successful, so render.
+    .then(list_bookinstances => {
       res.render("bookinstance_list", {
         title: "Book Instance List",
-        bookinstance_list: list_bookinstances,
-      });
+        bookinstance_list: list_bookinstances, });
+    })
+    .catch(err => {
+      next(err);
     });
 };
-exports.bookinstance_list = function(req, res, next) {
-
-    BookInstance.find()
-      .populate('book')
-      .exec(function (err, list_bookinstances) {
-        if (err) { return next(err); }
-        // Successful, so render
-        res.render('bookinstance_list', { title: 'Book Instance List', bookinstance_list: list_bookinstances });
-      });
-  
-  };
 // Display detail page for a specific BookInstance.
 exports.bookinstance_detail = function (req, res, next) {
   BookInstance.findById(req.params.id)
     .populate("book")
-    .exec(function (err, bookinstance) {
-      if (err) {
-        return next(err);
-      }
-      if (bookinstance == null) {
-        // No results.
-        var err = new Error("Book copy not found");
-        err.status = 404;
-        return next(err);
-      }
-      // Successful, so render.
-      res.render("bookinstance_detail", {
-        title: "Book:",
-        bookinstance: bookinstance,
-      });
+    .then(bookinstance => {
+    if (bookinstance == null) {
+      // No results.
+      const err = new Error('Book copy not found');
+      err.status = 404;
+      throw err;
+    }
+    // Successful, so render.
+    res.render('bookinstance_detail', {
+      title: 'Book:',
+      bookinstance: bookinstance
     });
+  })
+  .catch(err => {
+    next(err);
+  });
 };
 
 // Display BookInstance create form on GET.

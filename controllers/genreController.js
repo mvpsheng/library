@@ -1,18 +1,16 @@
 var Genre = require("../models/genre");
 var Book = require("../models/book");
 var async = require("async");
+const util = require('util');
 
-const { body, validationResult } = require("express-validator");
+const { body,validationResult } = require('express-validator/check');
+const { sanitizeBody } = require('express-validator/filter');
 
 // Display list of all Genre.
 exports.genre_list = function (req, res, next) {
   Genre.find()
     .sort([["name", "ascending"]])
-    .exec(function (err, list_genres) {
-      if (err) {
-        return next(err);
-      }
-      // Successful, so render.
+    .then(list_genres => {
       res.render("genre_list", {
         title: "Genre List",
         list_genres: list_genres,
@@ -21,35 +19,27 @@ exports.genre_list = function (req, res, next) {
 };
 
 // Display detail page for a specific Genre.
-exports.genre_detail = function (req, res, next) {
-  async.parallel(
-    {
-      genre: function (callback) {
-        Genre.findById(req.params.id).exec(callback);
-      },
+exports.genre_detail = async function (req, res, next) {
+  try {
+    const genre = await Genre.findById(req.params.id).exec();
+    const genre_books = await Book.find({ genre: req.params.id }).exec();
 
-      genre_books: function (callback) {
-        Book.find({ genre: req.params.id }).exec(callback);
-      },
-    },
-    function (err, results) {
-      if (err) {
-        return next(err);
-      }
-      if (results.genre == null) {
-        // No results.
-        var err = new Error("Genre not found");
-        err.status = 404;
-        return next(err);
-      }
-      // Successful, so render.
-      res.render("genre_detail", {
-        title: "Genre Detail",
-        genre: results.genre,
-        genre_books: results.genre_books,
-      });
+    if (genre == null) {
+      // No results.
+      var err = new Error("Genre not found");
+      err.status = 404;
+      return next(err);
     }
-  );
+
+    // Successful, so render.
+    res.render("genre_detail", {
+      title: "Genre Detail",
+      genre: genre,
+      genre_books: genre_books,
+    });
+  } catch (err) {
+    return next(err);
+  }
 };
 
 // Display Genre create form on GET.
@@ -58,20 +48,20 @@ exports.genre_create_get = function (req, res, next) {
 };
 
 // Handle Genre create on POST.
-exports.genre_create_post = [
-  // Validate and santize the name field.
-  body("name", "Genre name must contain at least 3 characters")
-    .trim()
-    .isLength({ min: 3 })
-    .escape(),
+exports.genre_create_post = async function (req, res, next) {
+  try {
+    // Validate and santize the name field.
+    await body("name", "Genre name must contain at least 3 characters")
+      .trim()
+      .isLength({ min: 3 })
+      .escape()
+      .run(req);
 
-  // Process request after validation and sanitization.
-  (req, res, next) => {
     // Extract the validation errors from a request.
     const errors = validationResult(req);
 
     // Create a genre object with escaped and trimmed data.
-    var genre = new Genre({ name: req.body.name });
+    const genre = new Genre({ name: req.body.name });
 
     if (!errors.isEmpty()) {
       // There are errors. Render the form again with sanitized values/error messages.
@@ -84,27 +74,21 @@ exports.genre_create_post = [
     } else {
       // Data from form is valid.
       // Check if Genre with same name already exists.
-      Genre.findOne({ name: req.body.name }).exec(function (err, found_genre) {
-        if (err) {
-          return next(err);
-        }
+      const found_genre = await Genre.findOne({ name: req.body.name }).exec();
 
-        if (found_genre) {
-          // Genre exists, redirect to its detail page.
-          res.redirect(found_genre.url);
-        } else {
-          genre.save(function (err) {
-            if (err) {
-              return next(err);
-            }
-            // Genre saved. Redirect to genre detail page.
-            res.redirect(genre.url);
-          });
-        }
-      });
+      if (found_genre) {
+        // Genre exists, redirect to its detail page.
+        res.redirect(found_genre.url);
+      } else {
+        await genre.save();
+        // Genre saved. Redirect to genre detail page.
+        res.redirect(genre.url);
+      }
     }
-  },
-];
+  } catch (err) {
+    return next(err);
+  }
+};
 
 // Display Genre delete form on GET.
 exports.genre_delete_get = function (req, res, next) {
